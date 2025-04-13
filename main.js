@@ -10,42 +10,53 @@ signupButton.addEventListener("click", signup)
 loginButton.addEventListener("click", login)
 closeButton.addEventListener("click", () => modal.close())
 
-const SERVER_URL = "http://localhost:3000"
+// const SERVER_URL = "http://localhost:3000"
+const SERVER_URL="https://figerprint-auther-backend.onrender.com"
 
 async function signup() {
-  const email = emailInput.value
-
-  // 1. Get challenge from server
-  const initResponse = await fetch(
-    `${SERVER_URL}/init-register?email=${email}`,
-    { credentials: "include" }
-  )
-  const options = await initResponse.json()
-  if (!initResponse.ok) {
-    showModalText(options.error)
+  const email = emailInput.value.trim();
+  if (!email) {
+    showModalText("Please enter a valid email");
+    return;
   }
 
-  // 2. Create passkey
-  const registrationJSON = await startRegistration(options)
+  try {
+    // 1. Get registration options
+    const initResponse = await fetch(`${SERVER_URL}/init-register?email=${encodeURIComponent(email)}`, {
+      credentials: "include"
+    });
+    
+    const options = await initResponse.json();
+    
+    if (!initResponse.ok) {
+      showModalText(options.error || "Failed to start registration");
+      return;
+    }
 
-  // 3. Save passkey in DB
-  const verifyResponse = await fetch(`${SERVER_URL}/verify-register`, {
-    credentials: "include",
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(registrationJSON),
-  })
-
-  const verifyData = await verifyResponse.json()
-  if (!verifyResponse.ok) {
-    showModalText(verifyData.error)
-  }
-  if (verifyData.verified) {
-    showModalText(`Successfully registered ${email}`)
-  } else {
-    showModalText(`Failed to register`)
+    // 2. Start WebAuthn registration
+    const registrationJSON = await startRegistration(options);
+    
+    // 3. Verify registration
+    const verifyResponse = await fetch(`${SERVER_URL}/verify-register`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(registrationJSON)
+    });
+    
+    const verifyData = await verifyResponse.json();
+    if (!verifyResponse.ok) {
+      showModalText(verifyData.error || "Verification failed");
+      return;
+    }
+    
+    showModalText(verifyData.verified ? `Success! ${email} registered` : "Registration failed");
+    
+  } catch (error) {
+    console.error("Signup error:", error);
+    showModalText(error.message.includes("base64URLString") 
+      ? "Browser error: Try a different browser or device"
+      : "An unexpected error occurred");
   }
 }
 
